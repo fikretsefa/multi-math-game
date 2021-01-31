@@ -1,69 +1,73 @@
 import React, { useState, useEffect } from 'react';
-import { Questionaire, QuizResults } from './components';
-
-const API_URL = 'https://opentdb.com/api.php?amount=8&category=18&type=multiple';
+import socketIOClient from 'socket.io-client';
+const ENDPOINT = "localhost:4000";
+let socket = undefined;
 
 function App() {
-  const [questions, setQuestions] = useState([]);
-  const [quizResults, setQuizResults] = useState([]);
-  const [currentIndex, setcurrentIndex] = useState(0);
-  const [score, setScore] = useState(0);
-  const [gameEnded, setGameEnded] = useState(false);
-  const [showAnswers, setShowAnswers] = useState(false);
+  const [name, setName] = useState("");  
+  const [answer, setAnswer] = useState("");  
+  const [question, setQuestion] = useState("");
+  const [start, setStart] = useState(false);  
+  const [leaderboard, setLeaderboard] = useState();  
 
   useEffect(() => {
-    fetch(API_URL)
-      .then((res) => res.json())
-      .then((data) => {
-        const questions = data.results.map((question) => ({
-          ...question,
-          answers: [
-            question.correct_answer,
-            ...question.incorrect_answers,
-          ].sort(() => Math.random() - 0.5),
-        }));
-        // Math.random, 0 ile 1 arasında rastgele bir sayı döndürür. 
-        // 0.5'den küçük sayı üretirse negatif eğer bunun üzerindeyse pozitif alırsınız.
-
-        setQuestions(questions);
+    if(start){
+      socket.on('send_question', (data) => {
+        setQuestion(data)
       });
-  }, []);
-
-  const handleAnswer = (answer) => {
-    const newIndex = currentIndex + 1;
-
-    if (answer === questions[currentIndex].correct_answer) {
-      const difficultyPoint = questions[currentIndex].difficulty === 'easy' ? 1 : questions[currentIndex].difficulty === 'medium' ? 2 : 3
-      setScore(score + difficultyPoint);
-      setQuizResults([...quizResults, { quizResultQuestion: questions[currentIndex].question, quizResultType: true, quizCorrectAnswer: questions[currentIndex].correct_answer, difficulty: questions[currentIndex].difficulty }]);
-    } else {
-      setQuizResults([...quizResults, { quizResultQuestion: questions[currentIndex].question, quizResultType: false, quizCorrectAnswer: questions[currentIndex].correct_answer, difficulty: questions[currentIndex].difficulty }]);
+      socket.on('leaderboard', (data) => {
+        setLeaderboard(data);
+        data.map(leaderPlayer => console.log(leaderPlayer))
+      });
     }
-
-    if (newIndex >= questions.length) {
-      setGameEnded(true);
+  });
+  const handleSubmit = (e) => {
+    //e.preventDefault();
+    console.log('My name is ' + name);
+    if(name){
+      socket = socketIOClient.connect(ENDPOINT);
+      socket.emit('user_joined',name);
+      setStart(true);
     }
-
-    setShowAnswers(true)
-  }
-
-  const handleNextQuestion = () => {
-    setShowAnswers(false)
-    setcurrentIndex(currentIndex + 1);
-  }
+  };
+  const handleResponse = (e) => {
+    e.preventDefault();
+    console.log('My response ' + answer);
+    if(answer){
+      socket.emit('response',answer)
+      e.target['response'].value='';
+    }
+  };
 
   return (
-    gameEnded ?
-      (<QuizResults quizResults={quizResults} score={score} />)
-      :
-      (questions.length > 0 ?
-        <div className="container">
-          <Questionaire data={questions[currentIndex]} handleAnswer={handleAnswer} handleNextQuestion={handleNextQuestion} showAnswers={showAnswers} />
-        </div>
-        :
-        <h2 className='text-2xl text-white font-bold'>Heey, Wait Questions Loading..</h2>
-
-      ));
+    <div className="container flex flex-col justify-center items-center m-auto h-screen">
+         {!start ? 
+          (<div className="container flex flex-col justify-center items-center m-auto h-screen">
+          <h1 className="text-3xl font-bold text-white text-center">Welcome to the <span className="text-indigo-800">Socket.io</span> Math Game</h1>
+          <form className="bg-white w-2/5 p-6 shadow mt-6 text-center rounded-lg" onSubmit={handleSubmit} autoComplete="off">
+            <h2 className="text-xl mb-4 font-bold text-indigo-500">Enter your name</h2>
+            <input className="d-block w-full border border-indigo-500 shadow p-4 text-2xl font-bold text-indigo-800 text-center" type="text" name="name" onChange={e => setName(e.target.value)}/>
+          </form>
+        </div>):
+        (<div className="container flex flex-col justify-center items-center m-auto h-screen">
+          <div className="fixed top-0 right-0 bg-white p-6 shadow m-5 text-center rounded-lg">
+            <h3 className="text-xl mb-1 pb-1 font-bold text-indigo-800 border-b border-indigo-100">Leaderboard</h3>
+            <ul>
+              {leaderboard && (leaderboard.map(player => {
+                    return (<li className="flex justify-between text-xl font-bold text-indigo-700">
+                    <a>{player.name}</a>{player.points}
+                  </li>)
+                }))}
+            </ul>
+          </div>
+          <h1 className="text-3xl font-bold text-white text-center">{name} <span className="text-indigo-800">must be a little bit fast</span></h1>
+          <form className="bg-white w-2/5 p-6 shadow mt-6 text-center rounded-lg" onSubmit={handleResponse} autoComplete="off">
+            <h2 className="text-4xl mb-4 font-bold text-indigo-900">{question}</h2>
+            <input className="d-block w-full border border-indigo-500 shadow p-4 text-2xl font-bold text-indigo-800 text-center placeholder-indigo-300" type="text" placeholder="Maybe seven?" name="response" onChange={e => setAnswer(e.target.value)}/>
+          </form>
+        </div>)
+        }
+    </div>
+  );
 }
-
 export default App;
